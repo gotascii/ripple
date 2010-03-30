@@ -55,6 +55,7 @@ Gem::Specification.new do |s|
      "lib/ripple/document/attribute_methods/write.rb",
      "lib/ripple/document/bucket_access.rb",
      "lib/ripple/document/finders.rb",
+     "lib/ripple/document/indexing.rb",
      "lib/ripple/document/persistence.rb",
      "lib/ripple/document/persistence/callbacks.rb",
      "lib/ripple/document/properties.rb",
