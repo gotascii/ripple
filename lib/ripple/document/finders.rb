@@ -94,6 +94,34 @@ module Ripple
           end
         end
 
+        def match_attribute_name(method)
+          method.to_s.gsub!(/^find_by_/, '').try(:to_sym)
+        end
+
+        def find_by_indexed_attribute(attribute, value)
+          robjects_by_indexed_attribute(attribute, value).collect do |r|
+            instantiate(r)
+          end
+        end
+
+        def method_missing(method, *args)
+          attribute = match_attribute_name(method)
+          if attribute_indexed?(attribute)
+            define_dynamic_index_finder(method, attribute)
+            send(method, *args)
+          else
+            super
+          end
+        end
+
+        def define_dynamic_index_finder(method, attribute)
+          instance_eval <<-METH
+            def #{method}(val)
+              find_by_indexed_attribute(:#{attribute}, val)
+            end
+          METH
+        end
+
         private
         def find_one(key)
           instantiate(bucket.get(key))

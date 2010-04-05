@@ -66,7 +66,7 @@ module Ripple
 
       # @return [Hash] options appropriate for the validates class method
       def validation_options
-        @options.dup.except(:default)
+        @options.dup.except(:default, :index)
       end
 
       # Attempt to coerce the passed value into this property's type

@@ -123,11 +123,18 @@ describe Ripple::Document::AttributeMethods do
     @widget.changes.should == {"name" => ["widget", "foobar"]}
   end
 
-
   it "should refresh the attribute methods when adding a new property" do
     Widget.should_receive(:undefine_attribute_methods)
     Widget.property :start_date, Date
     Widget.properties.delete(:start_date) # cleanup
+  end
+
+  it "should know if an attribute exists" do
+    Widget.attribute_exists?(:size).should be_true
+  end
+
+  it "should know if an attribute does not exist" do
+    Widget.attribute_exists?(:spam).should be_false
   end
 
   it "should provide a hash representation of all of the attributes" do

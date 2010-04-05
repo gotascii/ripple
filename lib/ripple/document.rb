@@ -45,6 +45,7 @@ module Ripple
     autoload :AttributeMethods
     autoload :BucketAccess
     autoload :Finders
+    autoload :Indexing
     autoload :Persistence
     autoload :Properties
     autoload :Property, "ripple/document/properties"
@@ -55,6 +56,7 @@ module Ripple
       extend BucketAccess
       include Persistence
       include Ripple::EmbeddedDocument
+      include Indexing
       include Finders
     end
   end

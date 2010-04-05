@@ -47,6 +47,10 @@ module Ripple
         def define_attribute_methods
           super(properties.keys)
         end
+
+        def attribute_exists?(attribute)
+          properties.keys.include?(attribute.to_s)
+        end
       end
 
       module InstanceMethods

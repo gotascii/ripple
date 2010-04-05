@@ -42,6 +42,7 @@ module Ripple
         def property(key, type, options={})
           prop = super
           validates key, prop.validation_options unless prop.validation_options.blank?
+          prop
         end
       end
 

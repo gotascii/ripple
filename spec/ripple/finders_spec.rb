@@ -39,6 +39,26 @@ describe Ripple::Document::Finders do
     lambda { Box.find!() }.should raise_exception(Ripple::DocumentNotFound, "Couldn't find document without a key")
   end
 
+  it "should determine the attribute name" do
+    Box.match_attribute_name(:find_by_attribute_name).should == :attribute_name
+  end
+
+  it "should return nil if it cannot determine the attribute name" do
+    Box.match_attribute_name(:random_junk).should == nil
+  end
+
+  it "should find robjects by indexed attribute" do
+    Box.should_receive(:robjects_by_indexed_attribute).with(:field, "value").and_return([])
+    Box.find_by_indexed_attribute(:field, "value")
+  end
+
+  it "should collect instantiated robjects" do
+    robject = stub
+    Box.stub!(:robjects_by_indexed_attribute).and_return([robject])
+    Box.should_receive(:instantiate).with(robject).and_return("instantiated_robject")
+    Box.find_by_indexed_attribute(:field, "value").should == ["instantiated_robject"]
+  end
+
   describe "finding single documents" do
     it "should find a single document by key and assign its attributes" do
       @http.should_receive(:get).with(200, "/riak/", "boxes", "square", {}, {}).and_return({:code => 200, :headers => {"content-type" => ["application/json"]}, :body => '{"shape":"square"}'})

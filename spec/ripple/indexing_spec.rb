@@ -13,8 +13,50 @@ describe Ripple::Document::Indexing do
     @box = Box.new
   end
 
-  it "generates pluralized downcased class name" do
-    Box.plural_name.should == "boxes"
+  it "should return an empty array if an index robject does not exist" do
+    Box.stub!(:index_robject).and_return(nil)
+    Box.robjects_by_indexed_attribute(:field, "value").should == []
+  end
+
+  it "should return array of walked to robjects" do
+    Box.stub!(:bucket_name).and_return("bucket_name")
+    index_robject = mock
+    index_robject.should_receive(:walk).with(:bucket => "bucket_name", :keep => true).and_return([["robjects"]])
+    Box.stub!(:index_robject).and_return(index_robject)
+    Box.robjects_by_indexed_attribute(:field, "value").should == ["robjects"]
+  end
+
+  it "knows if an attribute is indexed" do
+    Box.index(:field)
+    Box.attribute_indexed?(:field).should be_true
+    Box.indexed_attributes.delete(:field)
+  end
+
+  it "knows if an attribute is not indexed" do
+    Box.attribute_indexed?(:field).should be_false
+  end
+
+  it "returns nil if it cannot find an index robject for an attribute value pair" do
+    exception = Riak::FailedRequest.new(:get, 200, 200, {}, "")
+    index_bucket = stub
+    index_bucket.stub!(:[]).and_raise(exception)
+    Box.stub!(:index_bucket).and_return(index_bucket)
+    Box.index_robject(:field, "value").should be_nil
+  end
+
+  it "find the index robject for an attribute and its value" do
+    index_bucket = stub
+    index_bucket.stub!(:[]).with('value'.hash.to_s).and_return("index_robject")
+    Box.stub!(:index_bucket).with(:field).and_return(index_bucket)
+    Box.index_robject(:field, "value").should == "index_robject"
+  end
+
+  it "finds the index bucket for an attribute" do
+    Box.stub!(:index_bucket_name).with(:field).and_return("index_bucket_name")
+    client = mock
+    client.should_receive(:[]).with("index_bucket_name").and_return("index_bucket")
+    Ripple.stub!(:client).and_return(client)
+    Box.index_bucket(:field).should == "index_bucket"
   end
 
   it "allows specification of which attributes to index" do
@@ -28,8 +70,22 @@ describe Ripple::Document::Indexing do
   end
 
   it "generates an index bucket name based on its class and an attribute" do
-    Box.stub!(:plural_name).and_return("boxes")
-    @box.index_bucket_name(:field).should == "boxes_by_field"
+    Box.stub!(:bucket_name).and_return("boxes")
+    Box.index_bucket_name(:field).should == "boxes_by_field"
+  end
+
+  it "should refresh each attribute index" do
+    Box.stub!(:indexed_attributes).and_return([@attribute])
+    Ripple::Document::Index.should_receive(:refresh).with(@box, @attribute)
+    @box.index_attributes
+  end
+
+  it "should find the link to index by searching link bucket names" do
+    Box.stub!(:index_bucket_name).with(:field).and_return("index_bucket_name")
+    link_to_weird = stub(:bucket => "weird")
+    link_to_index = stub(:bucket => "index_bucket_name")
+    @box.stub!(:robject_links).and_return([link_to_weird, link_to_index])
+    @box.link_to_index(:field).should == link_to_index
   end
 
   it "stores the robject" do
@@ -52,6 +108,10 @@ describe Ripple::Document::Indexing do
     @box.stub!(:robject).and_return(robject)
     @box.robject_to_link("rel").should == "link"
   end
+
+  after :all do
+    Object.send(:remove_const, :Box)
+  end
 end
 
 describe Ripple::Document::Index do
@@ -64,6 +124,37 @@ describe Ripple::Document::Index do
   it "delegates class method find to new" do
     Ripple::Document::Index.should_receive(:new).with(@document, @attribute).and_return("new")
     Ripple::Document::Index.find(@document, @attribute).should == "new"
+  end
+
+  it "should find the index on refresh" do
+    index = stub(:refresh => nil)
+    Ripple::Document::Index.should_receive(:find).with(@document, @attribute).and_return(index)
+    Ripple::Document::Index.refresh(@document, @attribute)
+  end
+
+  it "should refresh the found index on refresh" do
+    index = mock(:refresh => nil)
+    Ripple::Document::Index.stub!(:find).and_return(index)
+    Ripple::Document::Index.refresh(@document, @attribute)
+  end
+
+  it "find or create a new index robject based on attribute value" do
+    @index.stub!(:attribute_value).and_return("attribute_value")
+    index_bucket = mock
+    index_bucket.should_receive(:get_or_new).with("attribute_value".hash.to_s).and_return("index_robject")
+    @index.stub!(:index_bucket).and_return(index_bucket)
+    @index.refresh_index_robject
+    @index.index_robject.should == "index_robject"
+  end
+
+  it "should find the link to document by searching link keys" do
+    document = stub(:key => 123)
+    @index.stub!(:document).and_return(document)
+    link_to_document = stub(:key => 123)
+    link_to_weird = stub(:key => 321)
+    index_robject_links = [link_to_weird, link_to_document]
+    @index.stub!(:index_robject_links).and_return(index_robject_links)
+    @index.link_to_document.should == link_to_document
   end
 
   it "has a document" do
@@ -92,9 +183,7 @@ describe Ripple::Document::Index do
   end
 
   it "gets the bucket that the index robject is in" do
-    link_to_index = stub(:bucket => "index_bucket_name")
-    @index.stub!(:link_to_index).and_return(link_to_index)
-    Ripple.client.should_receive(:[]).with("index_bucket_name").and_return("index_bucket")
+    @document.class.stub!(:index_bucket).with(@attribute).and_return("index_bucket")
     @index.index_bucket.should == "index_bucket"
   end
 
@@ -104,7 +193,12 @@ describe Ripple::Document::Index do
     index_bucket = mock
     index_bucket.should_receive(:[]).with(1).and_return("index_robject")
     @index.stub!(:index_bucket).and_return(index_bucket)
-    @index.index_robject.should
+    @index.index_robject.should == "index_robject"
+  end
+
+  it "should return nil for index robject if link to index is nil" do
+    @index.stub!(:link_to_index).and_return(nil)
+    @index.index_robject.should == nil
   end
 
   it "knows if it can find a link to the document" do
@@ -164,6 +258,8 @@ describe Ripple::Document::Index do
   it "should delete link and store on refresh if stale" do
     @index.stub!(:stale?).and_return(true)
     @index.should_receive(:delete).ordered
+    @index.should_receive(:store).ordered
+    @index.should_receive(:refresh_index_robject).ordered
     @index.should_receive(:link).ordered
     @index.should_receive(:store).ordered
     @index.refresh
@@ -179,6 +275,7 @@ describe Ripple::Document::Index do
 
   it "deletes the link to the document on delete" do
     # expect deletion of link to document
+    @index.stub!(:index_robject?).and_return(true)
     @index.stub!(:link_to_document).and_return("link_to_document")
     links = mock
     links.should_receive(:delete).with("link_to_document")
@@ -193,16 +290,13 @@ describe Ripple::Document::Index do
   end
 
   it "deletes the link to the index on delete" do
+    @index.stub!(:index_robject?).and_return(false)
+
     # expect deletion of link to index
     @index.stub!(:link_to_index).and_return("link_to_index")
     links = mock
     links.should_receive(:delete).with("link_to_index")
     @index.stub!(:document_robject_links).and_return(links)
-
-    # stub out deletion of link to document
-    index_robject_links = stub("index_robject_links", :null_object => true)
-    @index.stub!(:index_robject_links).and_return(index_robject_links)
-    @index.stub!(:link_to_document)
 
     @index.delete
   end
@@ -222,7 +316,7 @@ describe Ripple::Document::Index do
   end
 
   it "generates a relation name for the links" do
-    @index.stub!(:plural_model_name).and_return("models")
+    @index.stub!(:document_bucket_name).and_return("models")
     @index.relation.should == "models_by_field_index"
   end
 
@@ -231,17 +325,10 @@ describe Ripple::Document::Index do
     @index.document_robject_links.should == "robject_links"
   end
 
-  it "has a shothand to the index robject links" do
+  it "returns the index robject links" do
     index_robject = stub(:links => "robject_links")
     @index.stub!(:index_robject).and_return(index_robject)
     @index.index_robject_links.should == "robject_links"
-  end
-
-  it "delegates plural model name to the documents class" do
-    klass = stub
-    klass.stub!(:plural_name).and_return("models")
-    @document.stub!(:class).and_return(klass)
-    @index.plural_model_name.should == "models"
   end
 
   it "knows when the attribute value has changed" do
@@ -252,9 +339,9 @@ describe Ripple::Document::Index do
   end
 
   it "knows when the attribute value has not changed" do
-    link_to_index = stub(:key => "marmite+and+toast")
+    link_to_index = stub(:key => "hashed_attribute_value")
     @index.stub!(:link_to_index).and_return(link_to_index)
-    @index.stub!(:attribute_value).and_return("marmite and toast")
+    @index.stub!(:hashed_attribute_value).and_return("hashed_attribute_value")
     @index.attribute_value_changed?.should be_false
   end
 
@@ -294,5 +381,10 @@ describe Ripple::Document::Index do
     index_robject.should_receive(:to_link).with("relation").and_return("index_robject_to_link")
     @index.should_receive(:index_robject).and_return(index_robject)
     @index.index_robject_to_link.should == "index_robject_to_link"
+  end
+
+  it "gets the document bucket name" do
+    @document.class.stub!(:bucket_name).and_return("bucket_name")
+    @index.document_bucket_name.should == "bucket_name"
   end
 end

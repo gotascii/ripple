@@ -64,7 +64,7 @@ describe Ripple::Document::Property do
   end
 
   it "should expose validation options" do
-    prop = Ripple::Document::Property.new('foo', String, 'default' => "bar", :presence => true)
+    prop = Ripple::Document::Property.new('foo', String, 'default' => "bar", :index => true, :presence => true)
     prop.validation_options.should == {:presence => true}
   end
 
